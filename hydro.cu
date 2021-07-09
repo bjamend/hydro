@@ -166,7 +166,7 @@ void initialize_primitive(double *primitive, double dx, int n, double x0) {
 }
 
 int main() {
-  const double tmax  = 0.5;
+  const double tmax  = 0.35;
   const int n        = 1000;
   const double xl    = 0;
   const double xr    = 1;
@@ -177,12 +177,26 @@ int main() {
   double primitive[3*n];
   double conserved[3*n];
   double conserved1[3*n];
+  double conserved2[3*n];
+  double conserved3[3*n];
 
   initialize_primitive(primitive, dx, n, xl);
   for (int i = 0; i < n; ++i) {
     double *prim = &primitive[3*i];
     double *cons = &conserved[3*i];
+    double *cons1 = &conserved1[3*i];
+    double *cons2 = &conserved2[3*i];
     primitive_to_conserved(prim, cons);
+    primitive_to_conserved(prim, cons1);
+    primitive_to_conserved(prim, cons2);
+  }
+
+  for (int i = 0; i < 3; ++i) {
+    conserved1[i] = conserved[i];
+    conserved2[i] = conserved[i];
+
+    conserved1[3*n-i-1] = conserved[3*n-i-1];
+    conserved2[3*n-i-1] = conserved[3*n-i-1];
   }
 
   double t = 0;
@@ -193,21 +207,46 @@ int main() {
     // Update the simulation in space.
     for (int i = 1; i < (n-1); ++i) {
 			double *cons_im1 = &conserved[3*(i-1)];
-    	double *cons_i   = &conserved[3*(i)];
+    	double *cons_i00 = &conserved[3*(i+0)];
     	double *cons_ip1 = &conserved[3*(i+1)];
-
       double f_iph[3];
       double f_imh[3];
-			hllc_flux(cons_im1, cons_i, f_imh);
-      hllc_flux(cons_i, cons_ip1, f_iph);
+			hllc_flux(cons_im1, cons_i00, f_imh);
+      hllc_flux(cons_i00, cons_ip1, f_iph);
 
-			conserved1[3*i]   = conserved[3*i] - (f_iph[0] - f_imh[0]) * dt / dx;
+			conserved1[3*i+0] = conserved[3*i+0] - (f_iph[0] - f_imh[0]) * dt / dx;
       conserved1[3*i+1] = conserved[3*i+1] - (f_iph[1] - f_imh[1]) * dt / dx;
       conserved1[3*i+2] = conserved[3*i+2] - (f_iph[2] - f_imh[2]) * dt / dx;
-    }
 
-    for (int i = 3; i < (3*(n-1)); ++i) {
-			conserved[i] = conserved1[i];
+      double *cons_im1_1 = &conserved1[3*(i-1)];
+      double *cons_i00_1 = &conserved1[3*(i+0)];
+      double *cons_ip1_1 = &conserved1[3*(i+1)];
+      double f_iph1[3];
+      double f_imh1[3];
+      hllc_flux(cons_im1_1, cons_i00_1, f_imh1);
+      hllc_flux(cons_i00_1, cons_ip1_1, f_iph1);
+
+      conserved2[3*i+0] = 3 * conserved[3*i+0] / 4 + conserved1[3*i+0] / 4 -
+                          (f_iph1[0] - f_imh1[0]) * dt / dx / 4;
+      conserved2[3*i+1] = 3 * conserved[3*i+1] / 4 + conserved1[3*i+1] / 4 -
+                          (f_iph1[1] - f_imh1[1]) * dt / dx / 4;
+      conserved2[3*i+2] = 3 * conserved[3*i+2] / 4 + conserved1[3*i+2] / 4 -
+                          (f_iph1[2] - f_imh1[2]) * dt / dx / 4;
+
+      double *cons_im1_2 = &conserved2[3*(i-1)];
+      double *cons_i00_2 = &conserved2[3*(i+0)];
+      double *cons_ip1_2 = &conserved2[3*(i+1)];
+      double f_iph2[3];
+      double f_imh2[3];
+      hllc_flux(cons_im1_2, cons_i00_2, f_imh2);
+      hllc_flux(cons_i00_2, cons_ip1_2, f_iph2);
+
+      conserved3[3*i+0] = conserved[3*i+0] / 3 + 2 * conserved2[3*i+0] / 3 -
+                          2 * (f_iph2[0] - f_imh2[0]) * dt / dx / 3;
+      conserved3[3*i+1] = conserved[3*i+1] / 3 + 2 * conserved2[3*i+1] / 3 -
+                          2 * (f_iph2[1] - f_imh2[1]) * dt / dx / 3;
+      conserved3[3*i+2] = conserved[3*i+2] / 3 + 2 * conserved2[3*i+2] / 3 -
+                          2 * (f_iph2[2] - f_imh2[2]) * dt / dx / 3;
     }
 
     // Save conserved vectors to text files in checkpoint intervals.
@@ -217,13 +256,17 @@ int main() {
       snprintf (filepath, sizeof(filepath), "output/data%d.txt", j);
       fp = fopen(filepath, "w");
       for (int k = 0; k < n; ++k) {
-        fprintf(fp, "%f %f %f %f\n", (k + 0.5) * dx, conserved[3*k],
+        fprintf(fp, "%f %f %f %f\n", xl + (k + 0.5) * dx, conserved[3*k],
                 conserved[3*k+1], conserved[3*k+2]);
       }
       fclose(fp);
       j += 1;
     } else {
       ;
+    }
+
+    for (int i = 3; i < (3*(n-1)); ++i) {
+      conserved[i] = conserved3[i];
     }
 
     t += dt;
