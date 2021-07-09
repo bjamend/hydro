@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 
 #define GAMMA (5.0 / 3.0)
@@ -111,8 +112,47 @@ void flux_star_vector(double *cons, double *d_star, double *flux, double s_star,
   }
 }
 
+int sign(int a) {
+  if (a < 0) {
+    return -1;
+  } else if (a > 0) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+int minmod(int a, int b, int c) {
+  return abs(sign(a) + sign(b)) * (sign(a) + sign(c)) * (min2(a, min(b, c))) / 4;
+}
+
 // Compute HLLC interface flux.
-void hllc_flux(double *ul, double *ur, double *flux_half){
+void hllc_flux(double *ul2, double *ul1, double *ur1, double *ur2, double *flux_half, double plm_theta){
+  double pl2[3];
+  double pl1[3];
+  double pr1[3];
+  double pr2[3];
+  conserved_to_primitive(ul2, pl2);
+  conserved_to_primitive(ul1, pl1);
+  conserved_to_primitive(ur1, pr1);
+  conserved_to_primitive(ur2, pr2);
+  double pl[3];
+  double pr[3];
+  double ul[3];
+  double ur[3];
+
+  for (int i = 0; i < 3; ++i) {
+    pl[i] = pl1[i] + 0.5 * minmod(plm_theta * (pl1[i] - pl2[i]),
+                                  0.5 * (pr1[i] - pl2[i]),
+                                  plm_theta * (pr1[i] - pl1[i]));
+    pr[i] = pr1[i] - 0.5 * minmod(plm_theta * (pr1[i] - pl1[i]),
+                                  0.5 * (pr2[i] - pl1[i]),
+                                  plm_theta * (pr2[i] - pr1[i]));
+  }
+
+  primitive_to_conserved(pl, ul);
+  primitive_to_conserved(pr, ur);
+
   double s[2];
   speed(ul, ur, s);
 	double s_l       = s[0];
@@ -173,6 +213,7 @@ int main() {
   const double dx    = (xr - xl) / n;
   const double dt    = 0.00025;
   const double chkpt = 0.0025;
+  double plm_theta = 1.5;
 
   double primitive[3*n];
   double conserved[3*n];
@@ -191,10 +232,9 @@ int main() {
     primitive_to_conserved(prim, cons2);
   }
 
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < 6; ++i) {
     conserved1[i] = conserved[i];
     conserved2[i] = conserved[i];
-
     conserved1[3*n-i-1] = conserved[3*n-i-1];
     conserved2[3*n-i-1] = conserved[3*n-i-1];
   }
@@ -205,26 +245,30 @@ int main() {
   // Evolve the simulation in time.
   while (t < tmax) {
     // Update the simulation in space.
-    for (int i = 1; i < (n-1); ++i) {
+    for (int i = 2; i < (n-2); ++i) {
+      double *cons_im2 = &conserved[3*(i-2)];
 			double *cons_im1 = &conserved[3*(i-1)];
     	double *cons_i00 = &conserved[3*(i+0)];
     	double *cons_ip1 = &conserved[3*(i+1)];
+      double *cons_ip2 = &conserved[3*(i+2)];
       double f_iph[3];
       double f_imh[3];
-			hllc_flux(cons_im1, cons_i00, f_imh);
-      hllc_flux(cons_i00, cons_ip1, f_iph);
+			hllc_flux(cons_im2, cons_im1, cons_i00, cons_ip1, f_imh, plm_theta);
+      hllc_flux(cons_im1, cons_i00, cons_ip1, cons_ip2, f_iph, plm_theta);
 
 			conserved1[3*i+0] = conserved[3*i+0] - (f_iph[0] - f_imh[0]) * dt / dx;
       conserved1[3*i+1] = conserved[3*i+1] - (f_iph[1] - f_imh[1]) * dt / dx;
       conserved1[3*i+2] = conserved[3*i+2] - (f_iph[2] - f_imh[2]) * dt / dx;
 
+      double *cons_im2_1 = &conserved1[3*(i-2)];
       double *cons_im1_1 = &conserved1[3*(i-1)];
       double *cons_i00_1 = &conserved1[3*(i+0)];
       double *cons_ip1_1 = &conserved1[3*(i+1)];
+      double *cons_ip2_1 = &conserved1[3*(i+2)];
       double f_iph1[3];
       double f_imh1[3];
-      hllc_flux(cons_im1_1, cons_i00_1, f_imh1);
-      hllc_flux(cons_i00_1, cons_ip1_1, f_iph1);
+      hllc_flux(cons_im2_1, cons_im1_1, cons_i00_1, cons_ip1_1, f_imh1, plm_theta);
+      hllc_flux(cons_im1_1, cons_i00_1, cons_ip1_1, cons_ip2_1, f_iph1, plm_theta);
 
       conserved2[3*i+0] = 3 * conserved[3*i+0] / 4 + conserved1[3*i+0] / 4 -
                           (f_iph1[0] - f_imh1[0]) * dt / dx / 4;
@@ -233,13 +277,15 @@ int main() {
       conserved2[3*i+2] = 3 * conserved[3*i+2] / 4 + conserved1[3*i+2] / 4 -
                           (f_iph1[2] - f_imh1[2]) * dt / dx / 4;
 
+      double *cons_im2_2 = &conserved2[3*(i-2)];
       double *cons_im1_2 = &conserved2[3*(i-1)];
       double *cons_i00_2 = &conserved2[3*(i+0)];
       double *cons_ip1_2 = &conserved2[3*(i+1)];
+      double *cons_ip2_2 = &conserved2[3*(i+2)];
       double f_iph2[3];
       double f_imh2[3];
-      hllc_flux(cons_im1_2, cons_i00_2, f_imh2);
-      hllc_flux(cons_i00_2, cons_ip1_2, f_iph2);
+      hllc_flux(cons_im2_2, cons_im1_2, cons_i00_2, cons_ip1_2, f_imh2, plm_theta);
+      hllc_flux(cons_im1_2, cons_i00_2, cons_ip1_2, cons_ip2_2, f_iph2, plm_theta);
 
       conserved3[3*i+0] = conserved[3*i+0] / 3 + 2 * conserved2[3*i+0] / 3 -
                           2 * (f_iph2[0] - f_imh2[0]) * dt / dx / 3;
@@ -265,7 +311,7 @@ int main() {
       ;
     }
 
-    for (int i = 3; i < (3*(n-1)); ++i) {
+    for (int i = 6; i < (3*(n-2)); ++i) {
       conserved[i] = conserved3[i];
     }
 
