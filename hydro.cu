@@ -3,6 +3,7 @@
 #include <math.h>
 
 #define GAMMA (5.0 / 3.0)
+#define PI 3.14159
 #define min2(a, b) (a) < (b) ? (a) : (b)
 #define max2(a, b) (a) > (b) ? (a) : (b)
 
@@ -127,7 +128,7 @@ int minmod(int a, int b, int c) {
 }
 
 // Compute HLLC interface flux.
-void hllc_flux(double *ul2, double *ul1, double *ur1, double *ur2, double *flux_half, double plm_theta){
+void hllc_flux(double *ul2, double *ul1, double *ur1, double *ur2, double *flux_half, double plm_theta, double *s){
   double pl2[3];
   double pl1[3];
   double pr1[3];
@@ -153,7 +154,6 @@ void hllc_flux(double *ul2, double *ul1, double *ur1, double *ur2, double *flux_
   primitive_to_conserved(pl, ul);
   primitive_to_conserved(pr, ur);
 
-  double s[2];
   speed(ul, ur, s);
 	double s_l       = s[0];
   double s_r       = s[1];
@@ -188,32 +188,32 @@ void hllc_flux(double *ul2, double *ul1, double *ur1, double *ur2, double *flux_
   }
 }
 
+double gaussian(double x) {
+  double mu = 0.5;
+  double sigma = 0.2;
+  return (1/sigma/sqrt(2*PI)) * exp(-(x-mu)*(x-mu)/2/sigma/sigma);
+}
+
 // Establish initial conditions for primitive quantities.
 void initialize_primitive(double *primitive, double dx, int n, double x0) {
   for (int i = 0; i < n; ++i) {
     double x = x0 + (i + 0.5) * dx;
     double *prim = &primitive[3*i];
-    if (x < 0.5) {
-      prim[0] = 1;
-      prim[1] = 0;
-      prim[2] = 1;
-    } else {
-      prim[0] = 0.1;
-      prim[1] = 0;
-      prim[2] = 0.125;
-    }
+    prim[0] = gaussian(x);
+    prim[1] = 1;
+    prim[2] = 1;
   }
 }
 
 int main() {
-  const double tmax  = 0.35;
+  const double tmax  = 0.5;
   const int n        = 1000;
   const double xl    = 0;
   const double xr    = 1;
   const double dx    = (xr - xl) / n;
-  const double dt    = 0.00025;
   const double chkpt = 0.0025;
-  double plm_theta = 1.5;
+  double plm_theta   = 1.5;
+  double cfl_number  = 0.4;
 
   double primitive[3*n];
   double conserved[3*n];
@@ -241,9 +241,14 @@ int main() {
 
   double t = 0;
   int j = 0;
+  double dt = 0.001;
+  double s[2];
+  double a1 = 0;
+  double a0 = 0;
 
   // Evolve the simulation in time.
   while (t < tmax) {
+    double a = 0;
     // Update the simulation in space.
     for (int i = 2; i < (n-2); ++i) {
       double *cons_im2 = &conserved[3*(i-2)];
@@ -253,8 +258,8 @@ int main() {
       double *cons_ip2 = &conserved[3*(i+2)];
       double f_iph[3];
       double f_imh[3];
-			hllc_flux(cons_im2, cons_im1, cons_i00, cons_ip1, f_imh, plm_theta);
-      hllc_flux(cons_im1, cons_i00, cons_ip1, cons_ip2, f_iph, plm_theta);
+			hllc_flux(cons_im2, cons_im1, cons_i00, cons_ip1, f_imh, plm_theta, s);
+      hllc_flux(cons_im1, cons_i00, cons_ip1, cons_ip2, f_iph, plm_theta, s);
 
 			conserved1[3*i+0] = conserved[3*i+0] - (f_iph[0] - f_imh[0]) * dt / dx;
       conserved1[3*i+1] = conserved[3*i+1] - (f_iph[1] - f_imh[1]) * dt / dx;
@@ -267,8 +272,8 @@ int main() {
       double *cons_ip2_1 = &conserved1[3*(i+2)];
       double f_iph1[3];
       double f_imh1[3];
-      hllc_flux(cons_im2_1, cons_im1_1, cons_i00_1, cons_ip1_1, f_imh1, plm_theta);
-      hllc_flux(cons_im1_1, cons_i00_1, cons_ip1_1, cons_ip2_1, f_iph1, plm_theta);
+      hllc_flux(cons_im2_1, cons_im1_1, cons_i00_1, cons_ip1_1, f_imh1, plm_theta, s);
+      hllc_flux(cons_im1_1, cons_i00_1, cons_ip1_1, cons_ip2_1, f_iph1, plm_theta, s);
 
       conserved2[3*i+0] = 3 * conserved[3*i+0] / 4 + conserved1[3*i+0] / 4 -
                           (f_iph1[0] - f_imh1[0]) * dt / dx / 4;
@@ -284,8 +289,8 @@ int main() {
       double *cons_ip2_2 = &conserved2[3*(i+2)];
       double f_iph2[3];
       double f_imh2[3];
-      hllc_flux(cons_im2_2, cons_im1_2, cons_i00_2, cons_ip1_2, f_imh2, plm_theta);
-      hllc_flux(cons_im1_2, cons_i00_2, cons_ip1_2, cons_ip2_2, f_iph2, plm_theta);
+      hllc_flux(cons_im2_2, cons_im1_2, cons_i00_2, cons_ip1_2, f_imh2, plm_theta, s);
+      hllc_flux(cons_im1_2, cons_i00_2, cons_ip1_2, cons_ip2_2, f_iph2, plm_theta, s);
 
       conserved3[3*i+0] = conserved[3*i+0] / 3 + 2 * conserved2[3*i+0] / 3 -
                           2 * (f_iph2[0] - f_imh2[0]) * dt / dx / 3;
@@ -293,7 +298,12 @@ int main() {
                           2 * (f_iph2[1] - f_imh2[1]) * dt / dx / 3;
       conserved3[3*i+2] = conserved[3*i+2] / 3 + 2 * conserved2[3*i+2] / 3 -
                           2 * (f_iph2[2] - f_imh2[2]) * dt / dx / 3;
+
+      a1 = max2(abs(s[0]), abs(s[1]));
+      a = max2(a1, abs(a));
     }
+
+    printf("%f\n", a);
 
     // Save conserved vectors to text files in checkpoint intervals.
     if (t >= (chkpt * j)) {
@@ -314,6 +324,8 @@ int main() {
     for (int i = 6; i < (3*(n-2)); ++i) {
       conserved[i] = conserved3[i];
     }
+
+    double dt = 0.001; //cfl_number * dx / a;
 
     t += dt;
   }

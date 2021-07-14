@@ -3,7 +3,7 @@ import os, os.path
 
 # Count the number of output files produced by the hydro code.
 DIR = './output'
-N = len([name for name in os.listdir(DIR) if os.path.isfile(os.path.join(DIR, name))])
+N = len([name for name in os.listdir(DIR) if os.path.isfile(os.path.join(DIR, name))]) - 1
 
 # Generate and save a 'frame' for each output file.
 for i in range(N):
