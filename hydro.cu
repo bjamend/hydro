@@ -127,8 +127,59 @@ double minmod(double a, double b, double c) {
   return abs(sign(a) + sign(b)) * (sign(a) + sign(c)) * (min2(a, (min(b, c)))) / 4;
 }
 
+// Compute HLL interface flux.
+void hll_flux(double *ul2, double *ul1, double *ur1, double *ur2, double *flux_half, double plm_theta, double *s) {
+  double pl2[3];
+  double pl1[3];
+  double pr1[3];
+  double pr2[3];
+  conserved_to_primitive(ul2, pl2);
+  conserved_to_primitive(ul1, pl1);
+  conserved_to_primitive(ur1, pr1);
+  conserved_to_primitive(ur2, pr2);
+  double pl[3];
+  double pr[3];
+  double ul[3];
+  double ur[3];
+
+  for (int i = 0; i < 3; ++i) {
+    pl[i] = pl1[i] + 0.5 * minmod(plm_theta * (pl1[i] - pl2[i]),
+                                  0.5 * (pr1[i] - pl2[i]),
+                                  plm_theta * (pr1[i] - pl1[i]));
+    pr[i] = pr1[i] - 0.5 * minmod(plm_theta * (pr1[i] - pl1[i]),
+                                  0.5 * (pr2[i] - pl1[i]),
+                                  plm_theta * (pr2[i] - pr1[i]));
+  }
+
+  primitive_to_conserved(pl, ul);
+  primitive_to_conserved(pr, ur);
+
+  speed(ul, ur, s);
+  double s_l       = s[0];
+  double s_r       = s[1];
+
+  double fl[3];
+  double fr[3];
+  flux_vector(ul, fl);
+	flux_vector(ur, fr);
+
+  if (0 < s_l) {
+	  flux_half[0] = fl[0];
+    flux_half[1] = fl[1];
+    flux_half[2] = fl[2];
+  } else if ((s_l <= 0) && (0 < s_r)) {
+	  flux_half[0] = (s_r * fl[0] - s_l * fr[0] + s_l * s_r * (ur[0] - ul[0])) / (s_r - s_l);
+    flux_half[1] = (s_r * fl[1] - s_l * fr[1] + s_l * s_r * (ur[1] - ul[1])) / (s_r - s_l);
+    flux_half[2] = (s_r * fl[2] - s_l * fr[2] + s_l * s_r * (ur[2] - ul[2])) / (s_r - s_l);
+  } else {
+	  flux_half[0] = fr[0];
+    flux_half[1] = fr[1];
+    flux_half[2] = fr[2];
+  }
+}
+
 // Compute HLLC interface flux.
-void hllc_flux(double *ul2, double *ul1, double *ur1, double *ur2, double *flux_half, double plm_theta, double *s){
+void hllc_flux(double *ul2, double *ul1, double *ur1, double *ur2, double *flux_half, double plm_theta, double *s) {
   double pl2[3];
   double pl1[3];
   double pr1[3];
@@ -241,7 +292,7 @@ int main() {
 
   double t = 0;
   int j = 0;
-  double dt = 0.00001;
+  double dt = 0.0001;
   double s[2];
   //double a1 = 0;
 
