@@ -113,7 +113,7 @@ void flux_star_vector(double *cons, double *d_star, double *flux, double s_star,
   }
 }
 
-int sign(int a) {
+double sign(double a) {
   if (a < 0) {
     return -1;
   } else if (a > 0) {
@@ -123,8 +123,8 @@ int sign(int a) {
   }
 }
 
-int minmod(int a, int b, int c) {
-  return abs(sign(a) + sign(b)) * (sign(a) + sign(c)) * (min2(a, min(b, c))) / 4;
+double minmod(double a, double b, double c) {
+  return abs(sign(a) + sign(b)) * (sign(a) + sign(c)) * (min2(a, (min(b, c)))) / 4;
 }
 
 // Compute HLLC interface flux.
@@ -213,7 +213,7 @@ int main() {
   const double dx    = (xr - xl) / n;
   const double chkpt = 0.0025;
   double plm_theta   = 1.5;
-  double cfl_number  = 0.4;
+  //double cfl_number  = 0.4;
 
   double primitive[3*n];
   double conserved[3*n];
@@ -241,14 +241,13 @@ int main() {
 
   double t = 0;
   int j = 0;
-  double dt = 0.001;
+  double dt = 0.00001;
   double s[2];
-  double a1 = 0;
-  double a0 = 0;
+  //double a1 = 0;
 
   // Evolve the simulation in time.
   while (t < tmax) {
-    double a = 0;
+    //double a = 0;
     // Update the simulation in space.
     for (int i = 2; i < (n-2); ++i) {
       double *cons_im2 = &conserved[3*(i-2)];
@@ -299,11 +298,9 @@ int main() {
       conserved3[3*i+2] = conserved[3*i+2] / 3 + 2 * conserved2[3*i+2] / 3 -
                           2 * (f_iph2[2] - f_imh2[2]) * dt / dx / 3;
 
-      a1 = max2(abs(s[0]), abs(s[1]));
-      a = max2(a1, abs(a));
+      //a1 = max2(abs(s[0]), abs(s[1]));
+      //a = max2(a1, abs(a));
     }
-
-    printf("%f\n", a);
 
     // Save conserved vectors to text files in checkpoint intervals.
     if (t >= (chkpt * j)) {
@@ -325,7 +322,7 @@ int main() {
       conserved[i] = conserved3[i];
     }
 
-    double dt = 0.001; //cfl_number * dx / a;
+    //double dt = cfl_number * dx / a;
 
     t += dt;
   }
