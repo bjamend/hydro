@@ -124,7 +124,7 @@ double sign(double a) {
 }
 
 double minmod(double a, double b, double c) {
-  return fabs(sign(a) + sign(b)) * (sign(a) + sign(c)) * (min2(a, (min2(b, c)))) / 4;
+  return fabs(sign(a) + sign(b)) * (sign(a) + sign(c)) * (min2(fabs(a), (min2(fabs(b), fabs(c))))) / 4;
 }
 
 // Compute HLL interface flux.
@@ -252,26 +252,26 @@ void initialize_primitive(double *primitive, double dx, int n, double x0) {
     double *prim = &primitive[3*i];
     if (x < 0.5) {
       prim[0] = 1;
-      prim[1] = 5;
+      prim[1] = 0.9;
       prim[2] = 1;
     } else {
       prim[0] = 1;
-      prim[1] = -5;
-      prim[2] = 1;
+      prim[1] = 0;
+      prim[2] = 10;
     }
   }
 }
 
 int main() {
-  const double tmax  = 0.06;
+  const double tmax  = 0.5;
   const int n        = 1000;
   const double xl    = 0;
   const double xr    = 1;
   const double dx    = (xr - xl) / n;
-  const double chkpt = 0.001;
+  const double chkpt = 0.005;
   const double dt    = 0.0001;
   double t           = 0;
-  double plm_theta   = 1.3;
+  double plm_theta   = 1.5;
   int j              = 0;
   double s[2];
 
