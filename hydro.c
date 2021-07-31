@@ -113,6 +113,7 @@ void flux_star_vector(double *cons, double *d_star, double *flux, double s_star,
   }
 }
 
+// Return the sign of a value.
 double sign(double a) {
   if (a < 0) {
     return -1;
@@ -123,6 +124,7 @@ double sign(double a) {
   }
 }
 
+// Select the flattest slope from a set of three.
 double minmod(double a, double b, double c) {
   return fabs(sign(a) + sign(b)) * (sign(a) + sign(c)) * (min2(fabs(a), (min2(fabs(b), fabs(c))))) / 4;
 }
@@ -252,35 +254,41 @@ void initialize_primitive(double *primitive, double dx, int n, double x0) {
     double *prim = &primitive[3*i];
     if (x < 0.5) {
       prim[0] = 1;
-      prim[1] = 0.9;
+      prim[1] = 0;
       prim[2] = 1;
     } else {
-      prim[0] = 1;
+      prim[0] = 0.1;
       prim[1] = 0;
-      prim[2] = 10;
+      prim[2] = 0.125;
     }
   }
 }
 
 int main() {
-  const double tmax  = 0.5;
-  const int n        = 1000;
-  const double xl    = 0;
-  const double xr    = 1;
-  const double dx    = (xr - xl) / n;
-  const double chkpt = 0.005;
-  const double dt    = 0.0001;
-  double t           = 0;
-  double plm_theta   = 1.5;
-  int j              = 0;
-  double s[2];
+  const double tmax  = 1;              // Final time
+  const int n        = 1000;           // Number of spatial cells
+  const double xl    = 0;              // Left spatial boundary
+  const double xr    = 1;              // Right spatial boundary
+  const double dx    = (xr - xl) / n;  // Size of each cell
+  const double chkpt = 0.01;           // Time intervals over which data is collected
+  double dt          = 0.00001;        // Initial timestep size (varied later)
+  double t           = 0;              // Initial time
+  double plm_theta   = 1.5;            // Slope limiter parameter
+  int j              = 0;              // Initial value for checkpoint counter
+  double a           = 0;              // Dummy variable for fastest wave speed
+  double cfl_number  = 0.4;            // Convergence condition parameter
+  double s[2];                         // Outermost wave speed array
 
+  // Initialize array of primitives
   double primitive[3*n];
+
+  // Initialize 4 separate arrays of conserved quantities for RK3 in time
   double conserved[3*n];
   double conserved1[3*n];
   double conserved2[3*n];
   double conserved3[3*n];
 
+  // Implement initial conditions
   initialize_primitive(primitive, dx, n, xl);
   for (int i = 0; i < n; ++i) {
     double *prim = &primitive[3*i];
@@ -292,16 +300,14 @@ int main() {
     primitive_to_conserved(prim, cons2);
   }
 
-  for (int i = 0; i < 6; ++i) {
-    conserved1[i] = conserved[i];
-    conserved2[i] = conserved[i];
-    conserved1[3*n-i-1] = conserved[3*n-i-1];
-    conserved2[3*n-i-1] = conserved[3*n-i-1];
-  }
-
-  // Evolve the simulation in time.
+  // Evolve the simulation in time (third order via RK3).
   while (t < tmax) {
-    // Update the simulation in space.
+    // Dummy variables for fastest wave speeds in each RK3 cycle
+    double a1 = 0;
+    double a2 = 0;
+    double a3 = 0;
+
+    // Update the simulation in space (higher order via slope limiting).
     for (int i = 2; i < (n-2); ++i) {
       double *cons_im2 = &conserved[3*(i-2)];
 			double *cons_im1 = &conserved[3*(i-1)];
@@ -316,6 +322,31 @@ int main() {
 			conserved1[3*i+0] = conserved[3*i+0] - (f_iph[0] - f_imh[0]) * dt / dx;
       conserved1[3*i+1] = conserved[3*i+1] - (f_iph[1] - f_imh[1]) * dt / dx;
       conserved1[3*i+2] = conserved[3*i+2] - (f_iph[2] - f_imh[2]) * dt / dx;
+
+      a  = max2(abs(s[0]), abs(s[1]));
+      a1 = max2(a, abs(a1));
+    }
+
+    // Outflow boundary conditions (repeated for each RK3 cycle)
+    /* for (int i = 0; i < 2; ++i) {
+      conserved1[3*i] = conserved1[6];
+      conserved1[3*i+1] = conserved1[7];
+      conserved1[3*i+2] = conserved1[8];
+
+      conserved1[3*(n-i)-1] = conserved1[3*n-7];
+      conserved1[3*(n-i)-2] = conserved1[3*n-8];
+      conserved1[3*(n-i)-3] = conserved1[3*n-9];
+    } */
+
+    // Periodic boundary conditions (repeated for each RK3 cycle)
+    for (int i = 0; i < 2; ++i) {
+      conserved1[3*i+0] = conserved1[3*(n-3+i)-3];
+      conserved1[3*i+1] = conserved1[3*(n-3+i)-2];
+      conserved1[3*i+2] = conserved1[3*(n-3+i)-1];
+
+      conserved1[3*(n-1+i)-3] = conserved1[3*(i+2)+0];
+      conserved1[3*(n-1+i)-2] = conserved1[3*(i+2)+1];
+      conserved1[3*(n-1+i)-1] = conserved1[3*(i+2)+2];
     }
 
     for (int i = 2; i < (n-2); ++i) {
@@ -335,6 +366,29 @@ int main() {
                           (f_iph1[1] - f_imh1[1]) * dt / dx / 4;
       conserved2[3*i+2] = 3 * conserved[3*i+2] / 4 + conserved1[3*i+2] / 4 -
                           (f_iph1[2] - f_imh1[2]) * dt / dx / 4;
+
+      a = max2(abs(s[0]), abs(s[1]));
+      a2 = max2(a, abs(a2));
+    }
+
+    /* for (int i = 0; i < 2; ++i) {
+      conserved2[3*i] = conserved2[6];
+      conserved2[3*i+1] = conserved2[7];
+      conserved2[3*i+2] = conserved2[8];
+
+      conserved2[3*(n-i)-1] = conserved2[3*n-7];
+      conserved2[3*(n-i)-2] = conserved2[3*n-8];
+      conserved2[3*(n-i)-3] = conserved2[3*n-9];
+    } */
+
+    for (int i = 0; i < 2; ++i) {
+      conserved2[3*i+0] = conserved2[3*(n-3+i)-3];
+      conserved2[3*i+1] = conserved2[3*(n-3+i)-2];
+      conserved2[3*i+2] = conserved2[3*(n-3+i)-1];
+
+      conserved2[3*(n-1+i)-3] = conserved2[3*(i+2)+0];
+      conserved2[3*(n-1+i)-2] = conserved2[3*(i+2)+1];
+      conserved2[3*(n-1+i)-1] = conserved2[3*(i+2)+2];
     }
 
     for (int i = 2; i < (n-2); ++i) {
@@ -354,7 +408,37 @@ int main() {
                           2 * (f_iph2[1] - f_imh2[1]) * dt / dx / 3;
       conserved3[3*i+2] = conserved[3*i+2] / 3 + 2 * conserved2[3*i+2] / 3 -
                           2 * (f_iph2[2] - f_imh2[2]) * dt / dx / 3;
+
+      a = max2(abs(s[0]), abs(s[1]));
+      a3 = max2(a, abs(a3));
     }
+
+    /* for (int i = 0; i < 2; ++i) {
+      conserved3[3*i] = conserved3[6];
+      conserved3[3*i+1] = conserved3[7];
+      conserved3[3*i+2] = conserved3[8];
+
+      conserved3[3*(n-i)-1] = conserved3[3*n-7];
+      conserved3[3*(n-i)-2] = conserved3[3*n-8];
+      conserved3[3*(n-i)-3] = conserved3[3*n-9];
+    } */
+
+    for (int i = 0; i < 2; ++i) {
+      conserved3[3*i+0] = conserved3[3*(n-3+i)-3];
+      conserved3[3*i+1] = conserved3[3*(n-3+i)-2];
+      conserved3[3*i+2] = conserved3[3*(n-3+i)-1];
+
+      conserved3[3*(n-1+i)-3] = conserved3[3*(i+2)+0];
+      conserved3[3*(n-1+i)-2] = conserved3[3*(i+2)+1];
+      conserved3[3*(n-1+i)-1] = conserved3[3*(i+2)+2];
+    }
+
+    // Pick out fastest wave speed on grid at current time
+    double ws = max2(a1, a2);
+    double a_max = max2(ws, a3);
+
+    // Update timestep such that it satisfies necessary stability criteria
+    dt = cfl_number * dx / a_max;
 
     // Save conserved vectors to text files in checkpoint intervals.
     if (t >= (chkpt * j)) {
@@ -372,7 +456,8 @@ int main() {
       ;
     }
 
-    for (int i = 6; i < (3*(n-2)); ++i) {
+    // Update array of conserved quantities for next timestep
+    for (int i = 0; i < 3*n; ++i) {
       conserved[i] = conserved3[i];
     }
 
