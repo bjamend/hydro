@@ -97,6 +97,18 @@ void flux_vector(double *cons, double *flux) {
 	flux[2] = v * (pre + 0.5 * rho * v * v + pre / (GAMMA - 1));
 }
 
+// Compute source vector.
+void source_vector(double *cons, double *source, double r) {
+	double prim[3];
+	conserved_to_primitive(cons, prim);
+
+	double pre = prim[2];
+
+	source[0] = 0;
+	source[1] = 2 * pre / r;
+	source[2] = 0;
+}
+
 // Compute flux vector in star region.
 void flux_star_vector(double *cons, double *d_star, double *flux, double s_star,
                       double s, double *flux_star) {
@@ -252,25 +264,19 @@ void initialize_primitive(double *primitive, double dx, int n, double x0) {
   for (int i = 0; i < n; ++i) {
     double x = x0 + (i + 0.5) * dx;
     double *prim = &primitive[3*i];
-    if (x < 0.5) {
-      prim[0] = 1;
-      prim[1] = 0;
-      prim[2] = 1;
-    } else {
-      prim[0] = 0.1;
-      prim[1] = 0;
-      prim[2] = 0.125;
-    }
+    prim[0] = 10 / x / x;
+    prim[1] = 2;
+    prim[2] = 0.1 / x / x;
   }
 }
 
 int main() {
   const double tmax  = 1;              // Final time
   const int n        = 1000;           // Number of spatial cells
-  const double xl    = 0;              // Left spatial boundary
-  const double xr    = 1;              // Right spatial boundary
-  const double dx    = (xr - xl) / n;  // Size of each cell
-  const double chkpt = 0.01;           // Time intervals over which data is collected
+  const double rl    = 1;              // Left spatial boundary
+  const double rr    = 10;             // Right spatial boundary
+  const double dr    = (rr - rl) / n;  // Size of each cell
+  const double chkpt = 0.001;          // Time intervals over which data is collected
   double dt          = 0.00001;        // Initial timestep size (varied later)
   double t           = 0;              // Initial time
   double plm_theta   = 1.5;            // Slope limiter parameter
@@ -289,7 +295,7 @@ int main() {
   double conserved3[3*n];
 
   // Implement initial conditions
-  initialize_primitive(primitive, dx, n, xl);
+  initialize_primitive(primitive, dr, n, rl);
   for (int i = 0; i < n; ++i) {
     double *prim = &primitive[3*i];
     double *cons = &conserved[3*i];
@@ -319,27 +325,37 @@ int main() {
 			hllc_flux(cons_im2, cons_im1, cons_i00, cons_ip1, f_imh, plm_theta, s);
       hllc_flux(cons_im1, cons_i00, cons_ip1, cons_ip2, f_iph, plm_theta, s);
 
-			conserved1[3*i+0] = conserved[3*i+0] - (f_iph[0] - f_imh[0]) * dt / dx;
-      conserved1[3*i+1] = conserved[3*i+1] - (f_iph[1] - f_imh[1]) * dt / dx;
-      conserved1[3*i+2] = conserved[3*i+2] - (f_iph[2] - f_imh[2]) * dt / dx;
+      double r_i = rl + (i + 0.5) * dr;
+      double r_imh = r_i - (0.5 * dr);
+      double r_iph = r_i + (0.5 * dr);
+
+      double source[3];
+      source_vector(cons_i00, source, r_i);
+
+			conserved1[3*i+0] = conserved[3*i+0] - (r_iph * r_iph * f_iph[0] - r_imh * r_imh * f_imh[0]) * dt / dr / r_i / r_i + dt * source[0];
+      conserved1[3*i+1] = conserved[3*i+1] - (r_iph * r_iph * f_iph[1] - r_imh * r_imh * f_imh[1]) * dt / dr / r_i / r_i + dt * source[1];
+      conserved1[3*i+2] = conserved[3*i+2] - (r_iph * r_iph * f_iph[2] - r_imh * r_imh * f_imh[2]) * dt / dr / r_i / r_i + dt * source[2];
 
       a  = max2(abs(s[0]), abs(s[1]));
       a1 = max2(a, abs(a1));
     }
 
-    // Outflow boundary conditions (repeated for each RK3 cycle)
-    /* for (int i = 0; i < 2; ++i) {
-      conserved1[3*i] = conserved1[6];
-      conserved1[3*i+1] = conserved1[7];
-      conserved1[3*i+2] = conserved1[8];
+    // Inflow boundary conditions (repeated for each RK3 cycle)
+    for (int i = 0; i < 2; ++i) {
+      conserved1[3*i]   = conserved[3*i];
+      conserved1[3*i+1] = conserved[3*i+1];
+      conserved1[3*i+2] = conserved[3*i+2];
+    }
 
+    // Outflow boundary conditions (repeated for each RK3 cycle)
+    for (int i = 0; i < 2; ++i) {
       conserved1[3*(n-i)-1] = conserved1[3*n-7];
       conserved1[3*(n-i)-2] = conserved1[3*n-8];
       conserved1[3*(n-i)-3] = conserved1[3*n-9];
-    } */
+    }
 
     // Periodic boundary conditions (repeated for each RK3 cycle)
-    for (int i = 0; i < 2; ++i) {
+    /* for (int i = 0; i < 2; ++i) {
       conserved1[3*i+0] = conserved1[3*(n-3+i)-3];
       conserved1[3*i+1] = conserved1[3*(n-3+i)-2];
       conserved1[3*i+2] = conserved1[3*(n-3+i)-1];
@@ -347,7 +363,7 @@ int main() {
       conserved1[3*(n-1+i)-3] = conserved1[3*(i+2)+0];
       conserved1[3*(n-1+i)-2] = conserved1[3*(i+2)+1];
       conserved1[3*(n-1+i)-1] = conserved1[3*(i+2)+2];
-    }
+    } */
 
     for (int i = 2; i < (n-2); ++i) {
       double *cons_im2_1 = &conserved1[3*(i-2)];
@@ -360,28 +376,37 @@ int main() {
       hllc_flux(cons_im2_1, cons_im1_1, cons_i00_1, cons_ip1_1, f_imh1, plm_theta, s);
       hllc_flux(cons_im1_1, cons_i00_1, cons_ip1_1, cons_ip2_1, f_iph1, plm_theta, s);
 
+      double r_i = rl + (i + 0.5) * dr;
+      double r_imh = r_i - (0.5 * dr);
+      double r_iph = r_i + (0.5 * dr);
+
+      double source1[3];
+      source_vector(cons_i00_1, source1, r_i);
+
       conserved2[3*i+0] = 3 * conserved[3*i+0] / 4 + conserved1[3*i+0] / 4 -
-                          (f_iph1[0] - f_imh1[0]) * dt / dx / 4;
+                          (r_iph * r_iph * f_iph1[0] - r_imh * r_imh * f_imh1[0]) * dt / dr / r_i / r_i / 4 + dt * source1[0] / 4;
       conserved2[3*i+1] = 3 * conserved[3*i+1] / 4 + conserved1[3*i+1] / 4 -
-                          (f_iph1[1] - f_imh1[1]) * dt / dx / 4;
+                          (r_iph * r_iph * f_iph1[1] - r_imh * r_imh * f_imh1[1]) * dt / dr / r_i / r_i / 4 + dt * source1[1] / 4;
       conserved2[3*i+2] = 3 * conserved[3*i+2] / 4 + conserved1[3*i+2] / 4 -
-                          (f_iph1[2] - f_imh1[2]) * dt / dx / 4;
+                          (r_iph * r_iph * f_iph1[2] - r_imh * r_imh * f_imh1[2]) * dt / dr / r_i / r_i / 4 + dt * source1[2] / 4;
 
       a = max2(abs(s[0]), abs(s[1]));
       a2 = max2(a, abs(a2));
     }
 
-    /* for (int i = 0; i < 2; ++i) {
-      conserved2[3*i] = conserved2[6];
-      conserved2[3*i+1] = conserved2[7];
-      conserved2[3*i+2] = conserved2[8];
+    for (int i = 0; i < 2; ++i) {
+      conserved2[3*i]   = conserved[3*i];
+      conserved2[3*i+1] = conserved[3*i+1];
+      conserved2[3*i+2] = conserved[3*i+2];
+    }
 
+    for (int i = 0; i < 2; ++i) {
       conserved2[3*(n-i)-1] = conserved2[3*n-7];
       conserved2[3*(n-i)-2] = conserved2[3*n-8];
       conserved2[3*(n-i)-3] = conserved2[3*n-9];
-    } */
+    }
 
-    for (int i = 0; i < 2; ++i) {
+    /* for (int i = 0; i < 2; ++i) {
       conserved2[3*i+0] = conserved2[3*(n-3+i)-3];
       conserved2[3*i+1] = conserved2[3*(n-3+i)-2];
       conserved2[3*i+2] = conserved2[3*(n-3+i)-1];
@@ -389,7 +414,7 @@ int main() {
       conserved2[3*(n-1+i)-3] = conserved2[3*(i+2)+0];
       conserved2[3*(n-1+i)-2] = conserved2[3*(i+2)+1];
       conserved2[3*(n-1+i)-1] = conserved2[3*(i+2)+2];
-    }
+    } */
 
     for (int i = 2; i < (n-2); ++i) {
       double *cons_im2_2 = &conserved2[3*(i-2)];
@@ -402,28 +427,37 @@ int main() {
       hllc_flux(cons_im2_2, cons_im1_2, cons_i00_2, cons_ip1_2, f_imh2, plm_theta, s);
       hllc_flux(cons_im1_2, cons_i00_2, cons_ip1_2, cons_ip2_2, f_iph2, plm_theta, s);
 
+      double r_i = rl + (i + 0.5) * dr;
+      double r_imh = r_i - (0.5 * dr);
+      double r_iph = r_i + (0.5 * dr);
+
+      double source2[3];
+      source_vector(cons_i00_2, source2, r_i);
+
       conserved3[3*i+0] = conserved[3*i+0] / 3 + 2 * conserved2[3*i+0] / 3 -
-                          2 * (f_iph2[0] - f_imh2[0]) * dt / dx / 3;
+                          2 * (r_iph * r_iph * f_iph2[0] - r_imh * r_imh * f_imh2[0]) * dt / dr / r_i / r_i / 3 + dt * 2 * source2[0] / 3;
       conserved3[3*i+1] = conserved[3*i+1] / 3 + 2 * conserved2[3*i+1] / 3 -
-                          2 * (f_iph2[1] - f_imh2[1]) * dt / dx / 3;
+                          2 * (r_iph * r_iph * f_iph2[1] - r_imh * r_imh * f_imh2[1]) * dt / dr / r_i / r_i / 3 + dt * 2 * source2[1] / 3;
       conserved3[3*i+2] = conserved[3*i+2] / 3 + 2 * conserved2[3*i+2] / 3 -
-                          2 * (f_iph2[2] - f_imh2[2]) * dt / dx / 3;
+                          2 * (r_iph * r_iph * f_iph2[2] - r_imh * r_imh * f_imh2[2]) * dt / dr / r_i / r_i / 3 + dt * 2 * source2[2] / 3;
 
       a = max2(abs(s[0]), abs(s[1]));
       a3 = max2(a, abs(a3));
     }
 
-    /* for (int i = 0; i < 2; ++i) {
-      conserved3[3*i] = conserved3[6];
-      conserved3[3*i+1] = conserved3[7];
-      conserved3[3*i+2] = conserved3[8];
+    for (int i = 0; i < 2; ++i) {
+      conserved3[3*i]   = conserved[3*i];
+      conserved3[3*i+1] = conserved[3*i+1];
+      conserved3[3*i+2] = conserved[3*i+2];
+    }
 
+    for (int i = 0; i < 2; ++i) {
       conserved3[3*(n-i)-1] = conserved3[3*n-7];
       conserved3[3*(n-i)-2] = conserved3[3*n-8];
       conserved3[3*(n-i)-3] = conserved3[3*n-9];
-    } */
+    }
 
-    for (int i = 0; i < 2; ++i) {
+    /* for (int i = 0; i < 2; ++i) {
       conserved3[3*i+0] = conserved3[3*(n-3+i)-3];
       conserved3[3*i+1] = conserved3[3*(n-3+i)-2];
       conserved3[3*i+2] = conserved3[3*(n-3+i)-1];
@@ -431,14 +465,14 @@ int main() {
       conserved3[3*(n-1+i)-3] = conserved3[3*(i+2)+0];
       conserved3[3*(n-1+i)-2] = conserved3[3*(i+2)+1];
       conserved3[3*(n-1+i)-1] = conserved3[3*(i+2)+2];
-    }
+    } */
 
     // Pick out fastest wave speed on grid at current time
     double ws = max2(a1, a2);
     double a_max = max2(ws, a3);
 
     // Update timestep such that it satisfies necessary stability criteria
-    dt = cfl_number * dx / a_max;
+    dt = cfl_number * dr / a_max;
 
     // Save conserved vectors to text files in checkpoint intervals.
     if (t >= (chkpt * j)) {
@@ -447,7 +481,7 @@ int main() {
       snprintf (filepath, sizeof(filepath), "output/data%d.txt", j);
       fp = fopen(filepath, "w");
       for (int k = 0; k < n; ++k) {
-        fprintf(fp, "%f %f %f %f\n", xl + (k + 0.5) * dx, conserved[3*k],
+        fprintf(fp, "%f %f %f %f\n", rl + (k + 0.5) * dr, conserved[3*k],
                 conserved[3*k+1], conserved[3*k+2]);
       }
       fclose(fp);
