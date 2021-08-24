@@ -105,7 +105,7 @@ void source_vector(double *cons, double *source, double r) {
 	double pre = prim[2];
 
 	source[0] = 0;
-	source[1] = 2 * pre / r;
+	source[1] = 0; /* 2 * pre / r; */
 	source[2] = 0;
 }
 
@@ -340,9 +340,15 @@ int main() {
       double source[3];
       source_vector(cons_i00, source, r_i);
 
-			conserved1[3*i+0] = conserved[3*i+0] - (r_iph * r_iph * f_iph[0] - r_imh * r_imh * f_imh[0]) * dt / dr / r_i / r_i + dt * source[0];
+      // Planar cartesian coordinates
+      conserved1[3*i+0] = conserved[3*i+0] - (f_iph[0] - f_imh[0]) * dt / dr + dt * source[0];
+      conserved1[3*i+1] = conserved[3*i+1] - (f_iph[1] - f_imh[1]) * dt / dr + dt * source[1];
+      conserved1[3*i+2] = conserved[3*i+2] - (f_iph[2] - f_imh[2]) * dt / dr + dt * source[2];
+
+      // Spherical polar coordinates
+			/* conserved1[3*i+0] = conserved[3*i+0] - (r_iph * r_iph * f_iph[0] - r_imh * r_imh * f_imh[0]) * dt / dr / r_i / r_i + dt * source[0];
       conserved1[3*i+1] = conserved[3*i+1] - (r_iph * r_iph * f_iph[1] - r_imh * r_imh * f_imh[1]) * dt / dr / r_i / r_i + dt * source[1];
-      conserved1[3*i+2] = conserved[3*i+2] - (r_iph * r_iph * f_iph[2] - r_imh * r_imh * f_imh[2]) * dt / dr / r_i / r_i + dt * source[2];
+      conserved1[3*i+2] = conserved[3*i+2] - (r_iph * r_iph * f_iph[2] - r_imh * r_imh * f_imh[2]) * dt / dr / r_i / r_i + dt * source[2]; */
 
       a  = max2(fabs(s[0]), fabs(s[1]));
       a1 = max2(a, fabs(a1));
@@ -392,11 +398,18 @@ int main() {
       source_vector(cons_i00_1, source1, r_i);
 
       conserved2[3*i+0] = 3 * conserved[3*i+0] / 4 + conserved1[3*i+0] / 4 -
+                          (f_iph1[0] - f_imh1[0]) * dt / dr / 4 + dt * source1[0] / 4;
+      conserved2[3*i+1] = 3 * conserved[3*i+1] / 4 + conserved1[3*i+1] / 4 -
+                          (f_iph1[1] - f_imh1[1]) * dt / dr / 4 + dt * source1[1] / 4;
+      conserved2[3*i+2] = 3 * conserved[3*i+2] / 4 + conserved1[3*i+2] / 4 -
+                          (f_iph1[2] - f_imh1[2]) * dt / dr / 4 + dt * source1[2] / 4;
+
+      /* conserved2[3*i+0] = 3 * conserved[3*i+0] / 4 + conserved1[3*i+0] / 4 -
                           (r_iph * r_iph * f_iph1[0] - r_imh * r_imh * f_imh1[0]) * dt / dr / r_i / r_i / 4 + dt * source1[0] / 4;
       conserved2[3*i+1] = 3 * conserved[3*i+1] / 4 + conserved1[3*i+1] / 4 -
                           (r_iph * r_iph * f_iph1[1] - r_imh * r_imh * f_imh1[1]) * dt / dr / r_i / r_i / 4 + dt * source1[1] / 4;
       conserved2[3*i+2] = 3 * conserved[3*i+2] / 4 + conserved1[3*i+2] / 4 -
-                          (r_iph * r_iph * f_iph1[2] - r_imh * r_imh * f_imh1[2]) * dt / dr / r_i / r_i / 4 + dt * source1[2] / 4;
+                          (r_iph * r_iph * f_iph1[2] - r_imh * r_imh * f_imh1[2]) * dt / dr / r_i / r_i / 4 + dt * source1[2] / 4; */
 
       a = max2(fabs(s[0]), fabs(s[1]));
       a2 = max2(a, fabs(a2));
@@ -443,11 +456,18 @@ int main() {
       source_vector(cons_i00_2, source2, r_i);
 
       conserved3[3*i+0] = conserved[3*i+0] / 3 + 2 * conserved2[3*i+0] / 3 -
+                          2 * (f_iph2[0] - f_imh2[0]) * dt / dr / 3 + dt * 2 * source2[0] / 3;
+      conserved3[3*i+1] = conserved[3*i+1] / 3 + 2 * conserved2[3*i+1] / 3 -
+                          2 * (f_iph2[1] - f_imh2[1]) * dt / dr / 3 + dt * 2 * source2[1] / 3;
+      conserved3[3*i+2] = conserved[3*i+2] / 3 + 2 * conserved2[3*i+2] / 3 -
+                          2 * (f_iph2[2] - f_imh2[2]) * dt / dr / 3 + dt * 2 * source2[2] / 3;
+
+      /* conserved3[3*i+0] = conserved[3*i+0] / 3 + 2 * conserved2[3*i+0] / 3 -
                           2 * (r_iph * r_iph * f_iph2[0] - r_imh * r_imh * f_imh2[0]) * dt / dr / r_i / r_i / 3 + dt * 2 * source2[0] / 3;
       conserved3[3*i+1] = conserved[3*i+1] / 3 + 2 * conserved2[3*i+1] / 3 -
                           2 * (r_iph * r_iph * f_iph2[1] - r_imh * r_imh * f_imh2[1]) * dt / dr / r_i / r_i / 3 + dt * 2 * source2[1] / 3;
       conserved3[3*i+2] = conserved[3*i+2] / 3 + 2 * conserved2[3*i+2] / 3 -
-                          2 * (r_iph * r_iph * f_iph2[2] - r_imh * r_imh * f_imh2[2]) * dt / dr / r_i / r_i / 3 + dt * 2 * source2[2] / 3;
+                          2 * (r_iph * r_iph * f_iph2[2] - r_imh * r_imh * f_imh2[2]) * dt / dr / r_i / r_i / 3 + dt * 2 * source2[2] / 3; */
 
       a = max2(fabs(s[0]), fabs(s[1]));
       a3 = max2(a, fabs(a3));
