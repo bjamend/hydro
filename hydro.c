@@ -260,21 +260,25 @@ double gaussian(double x) {
 }
 
 // Establish initial conditions for primitive quantities.
-void initialize_primitive(double *primitive, double dx, int n, double x0) {
-  for (int i = 0; i < n; ++i) {
-    double x = x0 + (i + 0.5) * dx;
-    double *prim = &primitive[3*i];
-    prim[0] = 10 / x / x;
-    prim[1] = 2;
-    prim[2] = 0.1 / x / x;
+void initialize_primitive(double *primitive, int i, double t, double dx) {
+  double x = (i + 0.5) * dx;
+  double *prim = &primitive[3*i];
+  if ((x > 0.8) && (x < 1.0)) {
+    prim[0] = 10;
+    prim[1] = 100;
+    prim[2] = 0.1;
+  } else {
+    prim[0] = 1;
+    prim[1] = 0;
+    prim[2] = 0.1;
   }
 }
 
 int main() {
-  const double tmax  = 1;              // Final time
-  const int n        = 1000;           // Number of spatial cells
-  const double rl    = 1;              // Left spatial boundary
-  const double rr    = 10;             // Right spatial boundary
+  const double tmax  = 0.6;            // Final time
+  const int n        = 4096;           // Number of spatial cells
+  const double rl    = 0;              // Left spatial boundary
+  const double rr    = 5;              // Right spatial boundary
   const double dr    = (rr - rl) / n;  // Size of each cell
   const double chkpt = 0.001;          // Time intervals over which data is collected
   double dt          = 0.00001;        // Initial timestep size (varied later)
@@ -284,6 +288,7 @@ int main() {
   double a           = 0;              // Dummy variable for fastest wave speed
   double cfl_number  = 0.4;            // Convergence condition parameter
   double s[2];                         // Outermost wave speed array
+  double cd_radius   = 1;              // Initial radius of contact discontinuity
 
   // Initialize array of primitives
   double primitive[3*n];
@@ -295,7 +300,10 @@ int main() {
   double conserved3[3*n];
 
   // Implement initial conditions
-  initialize_primitive(primitive, dr, n, rl);
+  for (int i = 0; i < n; ++i) {
+    initialize_primitive(primitive, i, t, dr);
+  }
+
   for (int i = 0; i < n; ++i) {
     double *prim = &primitive[3*i];
     double *cons = &conserved[3*i];
@@ -322,8 +330,8 @@ int main() {
       double *cons_ip2 = &conserved[3*(i+2)];
       double f_iph[3];
       double f_imh[3];
-			hllc_flux(cons_im2, cons_im1, cons_i00, cons_ip1, f_imh, plm_theta, s);
-      hllc_flux(cons_im1, cons_i00, cons_ip1, cons_ip2, f_iph, plm_theta, s);
+			hll_flux(cons_im2, cons_im1, cons_i00, cons_ip1, f_imh, plm_theta, s);
+      hll_flux(cons_im1, cons_i00, cons_ip1, cons_ip2, f_iph, plm_theta, s);
 
       double r_i = rl + (i + 0.5) * dr;
       double r_imh = r_i - (0.5 * dr);
@@ -336,9 +344,11 @@ int main() {
       conserved1[3*i+1] = conserved[3*i+1] - (r_iph * r_iph * f_iph[1] - r_imh * r_imh * f_imh[1]) * dt / dr / r_i / r_i + dt * source[1];
       conserved1[3*i+2] = conserved[3*i+2] - (r_iph * r_iph * f_iph[2] - r_imh * r_imh * f_imh[2]) * dt / dr / r_i / r_i + dt * source[2];
 
-      a  = max2(abs(s[0]), abs(s[1]));
-      a1 = max2(a, abs(a1));
+      a  = max2(fabs(s[0]), fabs(s[1]));
+      a1 = max2(a, fabs(a1));
     }
+
+    printf("%f \n", a1);
 
     // Inflow boundary conditions (repeated for each RK3 cycle)
     for (int i = 0; i < 2; ++i) {
@@ -373,8 +383,8 @@ int main() {
       double *cons_ip2_1 = &conserved1[3*(i+2)];
       double f_iph1[3];
       double f_imh1[3];
-      hllc_flux(cons_im2_1, cons_im1_1, cons_i00_1, cons_ip1_1, f_imh1, plm_theta, s);
-      hllc_flux(cons_im1_1, cons_i00_1, cons_ip1_1, cons_ip2_1, f_iph1, plm_theta, s);
+      hll_flux(cons_im2_1, cons_im1_1, cons_i00_1, cons_ip1_1, f_imh1, plm_theta, s);
+      hll_flux(cons_im1_1, cons_i00_1, cons_ip1_1, cons_ip2_1, f_iph1, plm_theta, s);
 
       double r_i = rl + (i + 0.5) * dr;
       double r_imh = r_i - (0.5 * dr);
@@ -390,8 +400,8 @@ int main() {
       conserved2[3*i+2] = 3 * conserved[3*i+2] / 4 + conserved1[3*i+2] / 4 -
                           (r_iph * r_iph * f_iph1[2] - r_imh * r_imh * f_imh1[2]) * dt / dr / r_i / r_i / 4 + dt * source1[2] / 4;
 
-      a = max2(abs(s[0]), abs(s[1]));
-      a2 = max2(a, abs(a2));
+      a = max2(fabs(s[0]), fabs(s[1]));
+      a2 = max2(a, fabs(a2));
     }
 
     for (int i = 0; i < 2; ++i) {
@@ -424,8 +434,8 @@ int main() {
       double *cons_ip2_2 = &conserved2[3*(i+2)];
       double f_iph2[3];
       double f_imh2[3];
-      hllc_flux(cons_im2_2, cons_im1_2, cons_i00_2, cons_ip1_2, f_imh2, plm_theta, s);
-      hllc_flux(cons_im1_2, cons_i00_2, cons_ip1_2, cons_ip2_2, f_iph2, plm_theta, s);
+      hll_flux(cons_im2_2, cons_im1_2, cons_i00_2, cons_ip1_2, f_imh2, plm_theta, s);
+      hll_flux(cons_im1_2, cons_i00_2, cons_ip1_2, cons_ip2_2, f_iph2, plm_theta, s);
 
       double r_i = rl + (i + 0.5) * dr;
       double r_imh = r_i - (0.5 * dr);
@@ -441,8 +451,8 @@ int main() {
       conserved3[3*i+2] = conserved[3*i+2] / 3 + 2 * conserved2[3*i+2] / 3 -
                           2 * (r_iph * r_iph * f_iph2[2] - r_imh * r_imh * f_imh2[2]) * dt / dr / r_i / r_i / 3 + dt * 2 * source2[2] / 3;
 
-      a = max2(abs(s[0]), abs(s[1]));
-      a3 = max2(a, abs(a3));
+      a = max2(fabs(s[0]), fabs(s[1]));
+      a3 = max2(a, fabs(a3));
     }
 
     for (int i = 0; i < 2; ++i) {
@@ -481,12 +491,22 @@ int main() {
       snprintf (filepath, sizeof(filepath), "output/data%d.txt", j);
       fp = fopen(filepath, "w");
       for (int k = 0; k < n; ++k) {
-        fprintf(fp, "%f %f %f %f\n", rl + (k + 0.5) * dr, conserved[3*k],
-                conserved[3*k+1], conserved[3*k+2]);
+        double prim_out[3];
+        double cons_out[3] = {conserved[3*k], conserved[3*k+1], conserved[3*k+2]};
+        conserved_to_primitive(cons_out, prim_out);
+        fprintf(fp, "%f %f %f %f\n", rl + (k + 0.5) * dr, prim_out[0], prim_out[1], prim_out[2]);
       }
       fclose(fp);
       j += 1;
+
+      /* printf("%f \n", cd_radius);
+      int cd_index = (int)round(cd_radius / dr - 0.5);
+      double vel_cd = conserved[3*cd_index + 1] / conserved[3*cd_index];
+      cd_radius = cd_radius + vel_cd * dt; */
     } else {
+      /* int cd_index = (int)round(cd_radius / dr - 0.5);
+      double vel_cd = conserved[3*cd_index + 1] / conserved[3*cd_index];
+      cd_radius = cd_radius + vel_cd * dt; */
       ;
     }
 
