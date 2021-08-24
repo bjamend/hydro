@@ -348,8 +348,6 @@ int main() {
       a1 = max2(a, fabs(a1));
     }
 
-    printf("%f \n", a1);
-
     // Inflow boundary conditions (repeated for each RK3 cycle)
     for (int i = 0; i < 2; ++i) {
       conserved1[3*i]   = conserved[3*i];
@@ -454,6 +452,8 @@ int main() {
       a = max2(fabs(s[0]), fabs(s[1]));
       a3 = max2(a, fabs(a3));
     }
+
+    printf("%f \n", a3);
 
     for (int i = 0; i < 2; ++i) {
       conserved3[3*i]   = conserved[3*i];
